@@ -6,8 +6,8 @@ import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
 
 /**
- * Created by Lucas on 4/25/17.
- */
+* Created by Lucas on 4/25/17.
+*/
 class Messages {
     companion object {
         val BLACK = ChatColor.BLACK.toString()
@@ -34,7 +34,7 @@ class Messages {
         val SEPARATOR = RED + "-----------------------------------"
 
         fun success(sender : CommandSender, m : String, vararg inserts : String) {
-            var message = m;
+            var message = m
             for (i in inserts.indices) {
                 message = message.replace("{$i}", WHITE + inserts[i] + GREEN)
             }
@@ -46,7 +46,7 @@ class Messages {
             }
         }
         fun failure(sender : CommandSender, m : String, vararg inserts : String) {
-            var message = m;
+            var message = m
             for (i in inserts.indices) {
                 message = message.replace("{$i}", GRAY + inserts[i] + RED)
             }

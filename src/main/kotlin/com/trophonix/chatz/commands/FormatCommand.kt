@@ -11,8 +11,8 @@ import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
 
 /**
- * Created by Lucas on 4/24/17.
- */
+* Created by Lucas on 4/24/17.
+*/
 class FormatCommand(val plugin: ChatZ) : CommandExecutor {
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {

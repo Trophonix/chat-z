@@ -10,8 +10,8 @@ import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
 
 /**
- * Created by Lucas on 4/25/17.
- */
+* Created by Lucas on 4/25/17.
+*/
 class PlaceholdersCommand : CommandExecutor {
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
@@ -27,7 +27,7 @@ class PlaceholdersCommand : CommandExecutor {
                     else -> sender.sendMessage(Messages.GRAY + "There are no specific placeholders for " + message + " messages")
                 }
                 sender.sendMessage(Messages.SEPARATOR)
-                return true;
+                return true
             }
         }
 
@@ -58,7 +58,7 @@ class PlaceholdersCommand : CommandExecutor {
             ))
         }
         sender.sendMessage(Messages.SEPARATOR)
-        return true;
+        return true
     }
 
 }

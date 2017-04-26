@@ -9,8 +9,8 @@ import org.bukkit.command.CommandExecutor
 import org.bukkit.command.CommandSender
 
 /**
- * Created by Lucas on 4/24/17.
- */
+* Created by Lucas on 4/24/17.
+*/
 class ChatZCommand(val plugin: ChatZ) : CommandExecutor {
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {

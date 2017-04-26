@@ -11,7 +11,6 @@ import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
-import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.player.AsyncPlayerChatEvent
 import org.bukkit.event.player.PlayerJoinEvent
@@ -20,8 +19,8 @@ import org.bukkit.plugin.java.JavaPlugin
 import org.mcstats.Metrics
 
 /**
- * Created by Lucas on 4/24/17.
- */
+* Created by Lucas on 4/24/17.
+*/
 class ChatZ : JavaPlugin(), Listener {
 
     companion object {

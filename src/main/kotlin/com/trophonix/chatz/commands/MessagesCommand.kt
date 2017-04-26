@@ -11,8 +11,8 @@ import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
 
 /**
- * Created by Lucas on 4/25/17.
- */
+* Created by Lucas on 4/25/17.
+*/
 class MessagesCommand(val plugin : ChatZ) : CommandExecutor {
 
     companion object {
@@ -21,7 +21,7 @@ class MessagesCommand(val plugin : ChatZ) : CommandExecutor {
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
         if (args.isNotEmpty()) {
-            val message = args[0].toLowerCase();
+            val message = args[0].toLowerCase()
             if (MESSAGE_EVENTS.contains(message)) {
                 if (args.size == 1) {
                     val format = plugin.config.getString("messages." + message)
@@ -53,7 +53,7 @@ class MessagesCommand(val plugin : ChatZ) : CommandExecutor {
                     plugin.config.set("messages." + message, newFormat)
                     Messages.success(sender, Messages.SEPARATOR + "\\n[" + ChatZ.PREFIX + "] " + Messages.cap(message) + " Message Format set to:\\n{0}\\n" + Messages.SEPARATOR, newFormat)
                 }
-                return true;
+                return true
             }
         }
         val cmd = "/$label "
@@ -74,7 +74,7 @@ class MessagesCommand(val plugin : ChatZ) : CommandExecutor {
             ))
         }
         sender.sendMessage(Messages.SEPARATOR)
-        return true;
+        return true
     }
 
 }
