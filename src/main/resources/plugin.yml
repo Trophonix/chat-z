@@ -1,0 +1,47 @@
+name: Chat-Z
+author: Trophonix
+version: 1.0-SNAPSHOT
+main: com.trophonix.chatz.ChatZ
+softdepend: [Vault,Trunk,PlaceholderAPI]
+commands:
+  chatz:
+    description: Main Chat-Z admin command
+    permission: chatz.admin
+    aliases: [chat-z,cz,c-z]
+  format:
+    description: Change the chat format
+    permission: chatz.admin
+    aliases: [chatformat,chat-format]
+  messages:
+    description: Modify event messages (join, quit, etc.)
+    permission: chatz.admin
+    aliases: [chatmessages,chat-messages,eventmessages,event-messages]
+  placeholders:
+    description: View the available placeholders
+    permission: chatz.admin
+  filter:
+    description: Modify the chat filter
+    permission: chatz.admin
+    aliases: [chatfilter,chat-filter]
+  channels:
+    description: Edit channels
+    permission: chatz.admin
+    aliases: [chatchannels,chat-channels]
+  channel:
+    description: Join a channel
+    permission: chatz.channel
+    aliases: [ch,chatchannel,chat-channel]
+  colors:
+    description: List the colors you have permission for
+    permission: chatz.colors
+    aliases: [cols]
+  color:
+    description: Set your colors for chat
+    permission: chatz.color
+    aliases: [col]
+  namecolor:
+    description: Set your namecolor
+    permission: chatz.color
+  chatcolor:
+    description: Set your chatcolor
+    permission: chatz.color
