@@ -17,20 +17,26 @@ class PlaceholdersCommand : CommandExecutor {
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
         if (args.isNotEmpty()) {
             val message = args[0].toLowerCase()
-            if (MessagesCommand.MESSAGE_EVENTS.contains(message)) {
+            if (FormatCommand.MESSAGES.contains(message)) {
                 sender.sendMessage(arrayOf(Messages.SEPARATOR,
                         Messages.GREEN + "[" + ChatZ.PREFIX + "] " + Messages.cap(message) + " Message Placeholders:"))
                 when(message) {
                     "chat" -> sender.sendMessage("{message} " + Messages.GRAY + "The message")
                     "death-generic", "generic-death", "death" -> sender.sendMessage("{victim} " + Messages.GRAY + "The player who died")
                     "death-pvp", "pvp-death", "pvp" -> sender.sendMessage(arrayOf("{killer} " + Messages.GRAY + "The killer player", "{item} " + Messages.GRAY + "The item held by the killer"))
-                    else -> sender.sendMessage(Messages.GRAY + "There are no specific placeholders for " + message + " messages")
+                    "death-mob", "mob-death", "mob" -> sender.sendMessage("{mob} " + Messages.GRAY + "The killer mob (alternative to {killer})")
+                    else -> {
+                        if (message.startsWith("filter-")) {
+                            sender.sendMessage("{message} " + Messages.GRAY + "The message that was flagged")
+                        } else sender.sendMessage(Messages.GRAY + "There are no specific placeholders for " + message + " messages")
+                    }
                 }
                 sender.sendMessage(Messages.SEPARATOR)
                 return true
             }
         }
 
+        val cmd = "/$label"
         sender.sendMessage(arrayOf(Messages.SEPARATOR,
                 Messages.GREEN + "[" + ChatZ.PREFIX + "] General Placeholders:",
                 "{player} " + Messages.GRAY + "The relevant player's name",
@@ -42,18 +48,18 @@ class PlaceholdersCommand : CommandExecutor {
                 "{group:prefix} " + Messages.GRAY + "The player's primary group's prefix",
                 "{group:suffix} " + Messages.GRAY + "The player's primary group's suffix",
                 "",
-                Messages.GREEN + "Type " + Messages.DARK_GREEN + "/placeholders <event>" + Messages.GREEN + " to view specific placeholders."))
+                Messages.GREEN + "Type " + Messages.DARK_GREEN + "$cmd <event>" + Messages.GREEN + " to view specific placeholders."))
         if (sender is Player) {
             val messages = ArrayList<BaseComponent>()
-            MessagesCommand.MESSAGE_EVENTS.forEach {
-                val i = it + if (MessagesCommand.MESSAGE_EVENTS.indexOf(Messages.cap(it)) < MessagesCommand.MESSAGE_EVENTS.size - 1) Messages.GREEN + ", " else ""
+            FormatCommand.MESSAGES.forEach {
+                val i = it + if (FormatCommand.MESSAGES.indexOf(it) < (FormatCommand.MESSAGES.size - 1)) Messages.GREEN + ", " else ""
                 messages.add(TextComponent(*ComponentBuilder(i).color(ChatColor.DARK_GREEN)
-                        .event(ClickEvent(ClickEvent.Action.RUN_COMMAND, "/placeholders $it"))
+                        .event(ClickEvent(ClickEvent.Action.RUN_COMMAND, "$cmd $it"))
                         .event(HoverEvent(HoverEvent.Action.SHOW_TEXT, ComponentBuilder("View ${Messages.cap(it)} Message Placeholders").color(ChatColor.GREEN).create()))
                         .create()))
             }
+            sender.sendMessage(Messages.GREEN + "Available Events:")
             sender.spigot().sendMessage(TextComponent(
-                    *ComponentBuilder("Available Events: ").color(ChatColor.GREEN).create(),
                     *messages.toTypedArray()
             ))
         }

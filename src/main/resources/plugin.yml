@@ -9,13 +9,9 @@ commands:
     permission: chatz.admin
     aliases: [chat-z,cz,c-z]
   format:
-    description: Change the chat format
+    description: Modify message formats
     permission: chatz.admin
-    aliases: [chatformat,chat-format]
-  messages:
-    description: Modify event messages (join, quit, etc.)
-    permission: chatz.admin
-    aliases: [chatmessages,chat-messages,eventmessages,event-messages]
+    aliases: [formats,chat-format,message-format,chatformat,messageformat,chatformats,messageformats,chatmessages,chat-messages,eventmessages,event-messages]
   placeholders:
     description: View the available placeholders
     permission: chatz.admin

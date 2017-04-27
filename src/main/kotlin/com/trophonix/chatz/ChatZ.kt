@@ -1,16 +1,25 @@
 package com.trophonix.chatz
 
 import com.trophonix.chatz.commands.*
+import com.trophonix.chatz.util.ItemStacks
 import com.trophonix.chatz.util.Messages
 import com.trophonix.trunk.api.TrunkAPI
 import com.trophonix.trunk.api.chat.TrunkChat
 import me.clip.placeholderapi.PlaceholderAPI
+import net.md_5.bungee.api.ChatColor
+import net.md_5.bungee.api.chat.ComponentBuilder
+import net.md_5.bungee.api.chat.HoverEvent
+import net.md_5.bungee.api.chat.TextComponent
 import net.milkbowl.vault.chat.Chat
+import net.milkbowl.vault.item.Items
 import org.apache.commons.lang.StringUtils
+import org.bukkit.Bukkit
+import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
+import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.player.AsyncPlayerChatEvent
 import org.bukkit.event.player.PlayerJoinEvent
@@ -46,8 +55,8 @@ class ChatZ : JavaPlugin(), Listener {
         logger.info("Registering commands...")
         getCommand("chatz").executor = ChatZCommand(this)
         getCommand("format").executor = FormatCommand(this)
-        getCommand("messages").executor = MessagesCommand(this)
         getCommand("placeholders").executor = PlaceholdersCommand()
+        getCommand("filter").executor = FilterCommand(this)
         val channelsCommand = ChannelsCommand(this)
         getCommand("channels").executor = channelsCommand
         getCommand("channel").executor = channelsCommand
@@ -60,6 +69,16 @@ class ChatZ : JavaPlugin(), Listener {
         /*  Register Events  */
         logger.info("Registering events...")
         server.pluginManager.registerEvents(this, this)
+
+        /*  Load Config  */
+        logger.info("Loading configuration options...")
+        if (config.isSet("filter.words")) {
+            for (key in config.getConfigurationSection("filter.words").getKeys(false)) {
+                val list = config.getStringList("filter.words." + key) ?: ArrayList<String>()
+                FilterCommand.BANNED.put(key, list)
+                FormatCommand.MESSAGES.add("filter-" + key)
+            }
+        }
     }
 
     override fun onDisable() {
@@ -68,11 +87,45 @@ class ChatZ : JavaPlugin(), Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     fun onChat(event: AsyncPlayerChatEvent) {
-        logger.info("AsyncPlayerChatEvent!")
-        var format = Messages.colorize(config.getString("format", "{player}&r: {message}"))
-        format = format.replace("{message}", event.message)
-        format = format(format, event.player)
-        event.format = format
+        /*  Filter  */
+        var message = event.message.toLowerCase()
+        FilterCommand.COMMON_BYPASSES.forEach { t, u ->
+            message = message.replace(t, u)
+        }
+        message = message.replace("[^a-zA-Z0-9\\s]", "")
+        message = " $message "
+
+        var flagged = false
+        var filterFlagged = "general"
+        var highlighted = message
+        FilterCommand.BANNED.forEach { t, u ->
+            u.forEach {
+                if (message.contains(" $it ")) {
+                    flagged = true
+                    highlighted = highlighted.replace(it, Messages.DARK_GRAY + it + Messages.GRAY)
+                }
+            }
+            if (flagged) {
+                filterFlagged = t
+                return@forEach
+            }
+        }
+
+        if (flagged) {
+            var msg = config.getString("messages.filter-$filterFlagged") ?: config.getString("messages.filter-general", "Profanity was detected in your message!")
+            msg = msg.replace("{message}", highlighted.replaceFirst(" ", ""))
+            Messages.failure(event.player, Messages.colorize(msg))
+            event.isCancelled = true
+            return
+        }
+
+        /*  Chat Format  */
+        if (config.isSet("messages.chat")) {
+            var format = Messages.colorize(config.getString("messages.chat"))
+            format = format.replace("{message}", event.message)
+            format = format(format, event.player)
+            event.format = format
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -95,12 +148,42 @@ class ChatZ : JavaPlugin(), Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     fun onDeath(event: PlayerDeathEvent) {
-        /*  Event is pvp death  */
+        val cause = event.entity.lastDamageCause
+        /*  PvP death  */
         if (event.entity.killer != null && config.isSet("messages.death-pvp")) {
             var format = config.getString("messages.death-pvp")
             format = format(format, event.entity)
+            format = formatEvent(format, event.entity, "victim")
+            format = formatEvent(format, event.entity.killer, "killer")
+
+            val splitByItem = format.split("{item}")
+
+            val item = event.entity.killer.inventory.itemInMainHand
+            val info = Items.itemByType(item.type)
+
+            val itemName = if (item?.type != Material.AIR) item?.itemMeta?.displayName?: info?.name?: Messages.cap(item.type.name.replace("_", "-")).replace("-", " ") else "fists"
+
+            val finalMessage = TextComponent(
+                    TextComponent(splitByItem[0]),
+                    TextComponent(
+                            *ComponentBuilder(itemName).color(ChatColor.AQUA)
+                                    .event(HoverEvent(HoverEvent.Action.SHOW_ITEM, ItemStacks.itemDescriptor(item)))
+                                    .create()
+                    ),
+                    TextComponent(splitByItem[1])
+            )
+
+            Bukkit.getOnlinePlayers().forEach { it.spigot().sendMessage(finalMessage) }
+            event.deathMessage = null
+        }
+        /*  Mob death  */
+        else if (cause is EntityDamageByEntityEvent) {
+            var format = config.getString("messages.death-mob")
+            format = format(format, event.entity)
             format = format(format, event.entity, "victim")
-            format = format(format, event.entity.killer, "killer")
+            val mobName = cause.damager.customName ?: cause.damager.name
+            format = format.replace("{killer}", mobName)
+            format = format.replace("{mob}", mobName)
             event.deathMessage = format
         }
         /*  Generic death  */
@@ -111,6 +194,80 @@ class ChatZ : JavaPlugin(), Listener {
             event.deathMessage = format
         }
     }
+
+    private fun formatEvent(f : String, player : Player, playerTag : String) : String {
+        var format = f
+
+        /*  Insert basic placeholders  */
+        format = format.replace("{$playerTag}", player.displayName)
+
+        /*  Integrate PlaceholderAPI placeholders into format  */
+        if (pApiEnabled) {
+            format = PlaceholderAPI.setPlaceholders(player, format)
+        }
+
+        /*  Set up prefixes and suffixes  */
+        val groupPrefix : String
+        val groupSuffix : String
+        val playerPrefix : String
+        val playerSuffix : String
+        val groupPrefixes = ArrayList<String>()
+        val groupSuffixes = ArrayList<String>()
+
+        if (trunkChat != null) {
+            logger.info("Found Trunk!")
+            val group = trunkChat!!.getPrimaryGroup(player)
+            groupPrefix = Messages.colorize(trunkChat!!.getGroupPrefix(group))
+            groupSuffix = Messages.colorize(trunkChat!!.getGroupSuffix(group))
+            playerPrefix = Messages.colorize(trunkChat!!.getPrefix(player))
+            playerSuffix = Messages.colorize(trunkChat!!.getSuffix(player))
+            trunkChat!!.getGroups(player).mapTo(groupPrefixes) { trunkChat!!.getGroupPrefix(it) }
+            trunkChat!!.getGroups(player).mapTo(groupSuffixes) { trunkChat!!.getGroupSuffix(it) }
+        } else if (vaultChat != null) {
+            logger.info("Found Vault!")
+            val group = vaultChat!!.getPrimaryGroup(player)
+            groupPrefix = Messages.colorize(vaultChat!!.getGroupPrefix(player.world, group))
+            groupSuffix = Messages.colorize(vaultChat!!.getGroupSuffix(player.world, group))
+            playerPrefix = Messages.colorize(vaultChat!!.getPlayerPrefix(player))
+            playerSuffix = Messages.colorize(vaultChat!!.getPlayerSuffix(player))
+            vaultChat!!.getPlayerGroups(player).mapTo(groupPrefixes) { vaultChat!!.getGroupPrefix(player.world, it) }
+            vaultChat!!.getPlayerGroups(player).mapTo(groupSuffixes) { vaultChat!!.getGroupSuffix(player.world, it) }
+        } else {
+            groupPrefix = ""
+            groupSuffix = ""
+            playerPrefix = ""
+            playerSuffix = ""
+        }
+
+        /*  Set a group prefix/suffix into format  */
+        format = format.replace("{$playerTag:group:prefix}", groupPrefix)
+        format = format.replace("{$playerTag:group:suffix}", groupSuffix)
+
+        /*  Set primary prefix into format  */
+        if (playerPrefix.isNotEmpty()) {
+            format = format.replace("{$playerTag:prefix}", playerPrefix)
+        } else if (groupPrefix.isNotEmpty()) {
+            format = format.replace("{$playerTag:prefix}", groupPrefix)
+        } else {
+            format = format.replace("{$playerTag:prefix}", "")
+        }
+
+        /*  Set primary suffix into format  */
+        if (playerSuffix.isNotEmpty()) {
+            format = format.replace("{$playerTag:suffix}", playerSuffix)
+        } else if (groupSuffix.isNotEmpty()) {
+            format = format.replace("{$playerTag:suffix}", groupSuffix)
+        } else {
+            format = format.replace("{$playerTag:suffix}", "")
+        }
+
+        /*  Replace all prefixes and suffixes into format  */
+        format = format.replace("{$playerTag:group:prefixes}", StringUtils.join(groupPrefixes, ' '))
+        format = format.replace("$playerTag:group:suffixes}", StringUtils.join(groupSuffixes, ' '))
+
+        return format
+    }
+
     private fun format(f : String, player : Player) : String {
         return format(f, player, "player")
     }

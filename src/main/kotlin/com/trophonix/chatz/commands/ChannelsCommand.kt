@@ -11,7 +11,13 @@ import org.bukkit.command.CommandSender
 class ChannelsCommand(plugin : ChatZ) : CommandExecutor {
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
+
         return true
+    }
+
+    enum class ChannelItem(init: String.() -> Unit) {
+
+
     }
 
 }

@@ -48,9 +48,9 @@ class Messages {
         fun failure(sender : CommandSender, m : String, vararg inserts : String) {
             var message = m
             for (i in inserts.indices) {
-                message = message.replace("{$i}", GRAY + inserts[i] + RED)
+                message = message.replace("{$i}", RED + inserts[i] + GRAY)
             }
-            sender.sendMessage(RED + message)
+            sender.sendMessage(GRAY + message)
             if (sender is Player) {
                 sender.playSound(sender.eyeLocation, Sound.ENTITY_VILLAGER_HURT, 1f, 1f)
             }
