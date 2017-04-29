@@ -3,7 +3,6 @@ package com.trophonix.chatz
 import com.trophonix.chatz.commands.*
 import com.trophonix.chatz.util.ItemStacks
 import com.trophonix.chatz.util.Messages
-import com.trophonix.trunk.api.TrunkAPI
 import com.trophonix.trunk.api.chat.TrunkChat
 import me.clip.placeholderapi.PlaceholderAPI
 import net.md_5.bungee.api.ChatColor
@@ -15,6 +14,8 @@ import net.milkbowl.vault.item.Items
 import org.apache.commons.lang.StringUtils
 import org.bukkit.Bukkit
 import org.bukkit.Material
+import org.bukkit.configuration.file.FileConfiguration
+import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
@@ -26,6 +27,11 @@ import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.plugin.java.JavaPlugin
 import org.mcstats.Metrics
+import java.io.File
+import java.text.DecimalFormat
+import java.util.*
+import java.util.concurrent.ConcurrentHashMap
+import java.util.stream.Collectors
 
 /**
 * Created by Lucas on 4/24/17.
@@ -36,15 +42,54 @@ class ChatZ : JavaPlugin(), Listener {
         @JvmField val PREFIX = Messages.DARK_GREEN + "Chat-Z" + Messages.GREEN
     }
 
+    val dateFormat = DecimalFormat("0.##")
+
     var pApiEnabled: Boolean = false
 
     var trunkChat: TrunkChat? = null
     var vaultChat: Chat? = null
 
+    val playerChannels = ConcurrentHashMap<UUID, String>()
+    val playerDelays = ConcurrentHashMap<UUID, Long>()
+
+    var channelsFile: File? = null
+    var channels: FileConfiguration? = null
+
     override fun onEnable() {
+        saveDefaultConfig()
+
+        logger.info("Loading channels yml...")
+        channelsFile = File(dataFolder, "channels.yml")
+        if (channelsFile!!.exists()) {
+            logger.info("No channels.yml found! Copying default...")
+            try {
+                saveResource("channels.yml", false)
+            } catch (ex : Exception) {
+
+            }
+        }
+        channels = YamlConfiguration.loadConfiguration(channelsFile)
+        if (channels != null) {
+            logger.info("Loaded channels.yml successfully.")
+        } else {
+            logger.warning("Failed to load channels.yml. Shutting down.")
+            server.pluginManager.disablePlugin(this)
+            return
+        }
+
+        logger.info("Looking for plugins to hook into...")
         pApiEnabled = server.pluginManager.isPluginEnabled("PlaceholderAPI")
-        trunkChat = TrunkAPI.getAPI(TrunkChat::class.java)
-        vaultChat = server.servicesManager.getRegistration(Chat::class.java)?.provider
+        if (pApiEnabled) logger.info("Hooked into PlaceholderAPI")
+        trunkChat = server.servicesManager.getRegistration(TrunkChat::class.java)?.provider
+        if (trunkChat != null) {
+            logger.info("Hooked into Trunk")
+        } else {
+            vaultChat = server.servicesManager.getRegistration(Chat::class.java)?.provider
+            if (vaultChat != null) logger.info("Hooked into Vault")
+        }
+        if (!pApiEnabled && trunkChat == null && vaultChat == null) {
+            logger.info("Found no plugins to hook into.")
+        }
 
         /*  Initialize Metrics  */
         logger.info("Enabling metrics...")
@@ -79,10 +124,13 @@ class ChatZ : JavaPlugin(), Listener {
                 FormatCommand.MESSAGES.add("filter-" + key)
             }
         }
+
+        logger.info("Loaded!")
     }
 
     override fun onDisable() {
         saveConfig()
+        channels!!.save(channelsFile)
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -126,6 +174,35 @@ class ChatZ : JavaPlugin(), Listener {
             format = format(format, event.player)
             event.format = format
         }
+
+        /* ----- Channel Stuff ----- */
+
+        val channel = playerChannels[event.player.uniqueId]
+
+        /*  Channel Delay  */
+        val delay = channels!!.getDouble("channels.$channel.DELAY", -1.0)
+
+        if (delay >= 0.0) {
+            if (!playerDelays.contains(event.player.uniqueId)) {
+                playerDelays[event.player.uniqueId] = System.currentTimeMillis()
+            } else {
+                val last = playerDelays[event.player.uniqueId]
+                val timeUntil = last!! + (delay * 1000.0)
+                if (System.currentTimeMillis() < timeUntil) {
+                    Messages.failure(event.player, "You can speak again in {0} in {1} second${if (timeUntil == 0.0) "s" else ""}!", channel.toString(), dateFormat.format(timeUntil / 1000.0))
+                } else {
+                    playerDelays[event.player.uniqueId] = System.currentTimeMillis()
+                }
+            }
+        }
+
+        /*  Channel Range and Global Values  */
+        val recipients = getPlayersInMessage(event.player, channel!!)
+        if (recipients.isNotEmpty()) {
+            event.recipients.clear()
+            event.recipients.addAll(recipients)
+        }
+
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -206,6 +283,8 @@ class ChatZ : JavaPlugin(), Listener {
             format = PlaceholderAPI.setPlaceholders(player, format)
         }
 
+        /* ----- Vault/Trunk Hook Stuff  ----- */
+
         /*  Set up prefixes and suffixes  */
         val groupPrefix : String
         val groupSuffix : String
@@ -264,6 +343,30 @@ class ChatZ : JavaPlugin(), Listener {
         /*  Replace all prefixes and suffixes into format  */
         format = format.replace("{$playerTag:group:prefixes}", StringUtils.join(groupPrefixes, ' '))
         format = format.replace("$playerTag:group:suffixes}", StringUtils.join(groupSuffixes, ' '))
+
+        /* ----- Channel Stuff -----  */
+        val channel = playerChannels.get(player.uniqueId)
+
+        /*  Channel Prefix  */
+        val channelPrefix = Messages.colorize(channels!!.getString("channels.$channel.PREFIX"));
+        format = format.replace("{channel:prefix}", channelPrefix);
+        format = format.replace("{$playerTag:channel:prefix}", channelPrefix)
+
+        val channelNameColor = Messages.getColor(channels!!.getString("channels.$channel.NAME_COLOR"))
+        if (channelNameColor != null) {
+            format = format.replace("{channel:namecolor}", channelNameColor.toString())
+            format = format.replace("{channel:name_color}", channelNameColor.toString())
+            format = format.replace("{$playerTag:channel:namecolor}", channelNameColor.toString())
+            format = format.replace("{$playerTag:channel:name_color}", channelNameColor.toString())
+        }
+
+        val channelChatColor = Messages.getColor(channels!!.getString("channels.$channel.CHAT_COLOR"))
+        if (channelChatColor != null) {
+            format = format.replace("{channel:chatcolor}", channelChatColor.toString())
+            format = format.replace("{channel:chat_color}", channelChatColor.toString())
+            format = format.replace("{$playerTag:channel:chatcolor}", channelChatColor.toString())
+            format = format.replace("{$playerTag:channel:chat_color}", channelChatColor.toString())
+        }
 
         return format
     }
@@ -346,7 +449,42 @@ class ChatZ : JavaPlugin(), Listener {
         format = format.replace("{group:prefixes}", StringUtils.join(groupPrefixes, ' '))
         format = format.replace("group:suffixes}", StringUtils.join(groupSuffixes, ' '))
 
+        /* ----- Channel Stuff -----  */
+        val channel = playerChannels.get(player.uniqueId)
+
+        /*  Channel Prefix  */
+        val channelPrefix = Messages.colorize(channels!!.getString("channels.$channel.PREFIX"));
+        format = format.replace("{channel:prefix}", channelPrefix);
+        format = format.replace("{$playerTag:channel:prefix}", channelPrefix)
+
+        val channelNameColor = Messages.getColor(channels!!.getString("channels.$channel.NAME_COLOR"))
+        if (channelNameColor != null) {
+            format = format.replace("{channel:namecolor}", channelNameColor.toString())
+            format = format.replace("{channel:name_color}", channelNameColor.toString())
+            format = format.replace("{$playerTag:channel:namecolor}", channelNameColor.toString())
+            format = format.replace("{$playerTag:channel:name_color}", channelNameColor.toString())
+        }
+
+        val channelChatColor = Messages.getColor(channels!!.getString("channels.$channel.CHAT_COLOR"))
+        if (channelChatColor != null) {
+            format = format.replace("{channel:chatcolor}", channelChatColor.toString())
+            format = format.replace("{channel:chat_color}", channelChatColor.toString())
+            format = format.replace("{$playerTag:channel:chatcolor}", channelChatColor.toString())
+            format = format.replace("{$playerTag:channel:chat_color}", channelChatColor.toString())
+        }
+
         return format
+    }
+
+    @Suppress("UNUSED_EXPRESSION")
+    fun getPlayersInMessage(sender : Player, channel : String) : MutableSet<Player> {
+        return server.onlinePlayers.stream().filter({
+            if (it.uniqueId == sender.uniqueId) true
+            val range = channels!!.getDouble("channels.$channel.RANGE", -1.0)
+            if (range >= 0.0 && sender.location.distance(it.location) > range) false
+            val itChannel = playerChannels[it.uniqueId]
+            channel == itChannel || channels!!.getBoolean("channels.$channel.GLOBAL")
+        }).collect(Collectors.toSet())
     }
 
 }

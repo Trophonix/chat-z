@@ -20,6 +20,7 @@ class FormatCommand(val plugin : ChatZ) : CommandExecutor {
     }
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
+        val cmd = "/$label "
         if (args.isNotEmpty()) {
             val message = args[0].toLowerCase()
             if (MESSAGES.contains(message)) {
@@ -42,21 +43,23 @@ class FormatCommand(val plugin : ChatZ) : CommandExecutor {
                                 TextComponent(Messages.GREEN + " to view the available placeholders.")
                         ))
                         val clickHere : Array<BaseComponent> = ComponentBuilder("Click Here").color(ChatColor.DARK_GREEN)
-                                .event(ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/format $message ${format?:""}"))
+                                .event(ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "$cmd$message ${format?:""}"))
                                 .event(HoverEvent(HoverEvent.Action.SHOW_TEXT, ComponentBuilder("Edit Current Format").color(ChatColor.GREEN).create()))
                                 .create()
                         sender.spigot().sendMessage(TextComponent(TextComponent(*clickHere), TextComponent(Messages.GREEN + " to edit the current format.")))
                     }
                     sender.sendMessage(Messages.SEPARATOR)
                 } else {
-                    val newFormat = StringUtils.join(args.copyOfRange(1, args.size), ' ')
+                    var newFormat = StringUtils.join(args.copyOfRange(1, args.size), ' ')
+                    if ((newFormat.startsWith("\"") && newFormat.endsWith("\"")) || (newFormat.startsWith("'") && newFormat.endsWith("'"))) {
+                        newFormat = newFormat.substring(1..newFormat.length - 1);
+                    }
                     plugin.config.set("messages." + message, newFormat)
                     Messages.success(sender, Messages.SEPARATOR + "\\n[" + ChatZ.PREFIX + "] " + Messages.cap(message) + " Message Format set to:\\n{0}\\n" + Messages.SEPARATOR, newFormat)
                 }
                 return true
             }
         }
-        val cmd = "/$label "
         sender.sendMessage(Messages.SEPARATOR)
         sender.sendMessage(Messages.GREEN + "[" + ChatZ.PREFIX + "] Change Message Formats:")
         if (sender !is Player)

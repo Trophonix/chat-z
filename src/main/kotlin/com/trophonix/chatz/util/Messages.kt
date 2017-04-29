@@ -79,5 +79,13 @@ class Messages {
             }
             return message.toString()
         }
+        fun getColor(col : String) : ChatColor? {
+            for (color in ChatColor.values()) {
+                if (color.name.equals(col, true) || col[col.length - 1] == color.char) {
+                    return color
+                }
+            }
+            return null
+        }
     }
 }

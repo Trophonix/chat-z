@@ -22,7 +22,7 @@ commands:
   channels:
     description: Edit channels
     permission: chatz.admin
-    aliases: [chatchannels,chat-channels]
+    aliases: [chatchannels,chat-channels,chs]
   channel:
     description: Join a channel
     permission: chatz.channel
