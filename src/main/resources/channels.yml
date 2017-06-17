@@ -1,0 +1,10 @@
+default: local
+channels:
+  global:
+    PREFIX: '[global] '
+    GLOBAL: true
+    CHAT_COLOR: 'light_purple'
+  local:
+    PREFIX: '[local] '
+    CHAT_COLOR: 'gray'
+    RANGE: 25.0

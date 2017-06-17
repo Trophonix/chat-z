@@ -1,0 +1,2 @@
+messages:
+  chat: '{channel:prefix}{prefix}{player}{suffix}: &r{message}'

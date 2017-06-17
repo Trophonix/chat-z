@@ -1,6 +1,12 @@
 package com.trophonix.chatz
 
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonArray
+import com.google.gson.JsonParser
+import com.google.gson.stream.JsonWriter
 import com.trophonix.chatz.commands.*
+import com.trophonix.chatz.data.DataMap
+import com.trophonix.chatz.data.PlayerData
 import com.trophonix.chatz.util.ItemStacks
 import com.trophonix.chatz.util.Messages
 import com.trophonix.trunk.api.chat.TrunkChat
@@ -12,6 +18,7 @@ import net.md_5.bungee.api.chat.TextComponent
 import net.milkbowl.vault.chat.Chat
 import net.milkbowl.vault.item.Items
 import org.apache.commons.lang.StringUtils
+import org.apache.commons.validator.routines.InetAddressValidator
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.configuration.file.FileConfiguration
@@ -28,10 +35,12 @@ import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.plugin.java.JavaPlugin
 import org.mcstats.Metrics
 import java.io.File
+import java.io.FileReader
+import java.io.FileWriter
 import java.text.DecimalFormat
-import java.util.*
-import java.util.concurrent.ConcurrentHashMap
+import java.util.regex.Pattern
 import java.util.stream.Collectors
+import kotlin.collections.ArrayList
 
 /**
 * Created by Lucas on 4/24/17.
@@ -40,6 +49,8 @@ class ChatZ : JavaPlugin(), Listener {
 
     companion object {
         @JvmField val PREFIX = Messages.DARK_GREEN + "Chat-Z" + Messages.GREEN
+        @JvmField var INSTANCE : ChatZ? = null
+        @JvmField val DOMAIN_PATTERN = Pattern.compile("^((?!-)[A-Za-z0-9-]{1,63}(?<!-)\\.)+[A-Za-z]{2,6}$")
     }
 
     val dateFormat = DecimalFormat("0.##")
@@ -49,55 +60,34 @@ class ChatZ : JavaPlugin(), Listener {
     var trunkChat: TrunkChat? = null
     var vaultChat: Chat? = null
 
-    val playerChannels = ConcurrentHashMap<UUID, String>()
-    val playerDelays = ConcurrentHashMap<UUID, Long>()
+    val playerData = DataMap()
 
     var channelsFile: File? = null
     var channels: FileConfiguration? = null
 
     override fun onEnable() {
+        INSTANCE = this
+
         saveDefaultConfig()
 
-        logger.info("Loading channels yml...")
-        channelsFile = File(dataFolder, "channels.yml")
-        if (channelsFile!!.exists()) {
-            logger.info("No channels.yml found! Copying default...")
-            try {
-                saveResource("channels.yml", false)
-            } catch (ex : Exception) {
-
-            }
-        }
-        channels = YamlConfiguration.loadConfiguration(channelsFile)
-        if (channels != null) {
-            logger.info("Loaded channels.yml successfully.")
-        } else {
-            logger.warning("Failed to load channels.yml. Shutting down.")
-            server.pluginManager.disablePlugin(this)
-            return
-        }
-
-        logger.info("Looking for plugins to hook into...")
+        logger.info("Looking for plugins to hook into")
         pApiEnabled = server.pluginManager.isPluginEnabled("PlaceholderAPI")
         if (pApiEnabled) logger.info("Hooked into PlaceholderAPI")
         trunkChat = server.servicesManager.getRegistration(TrunkChat::class.java)?.provider
-        if (trunkChat != null) {
-            logger.info("Hooked into Trunk")
-        } else {
-            vaultChat = server.servicesManager.getRegistration(Chat::class.java)?.provider
-            if (vaultChat != null) logger.info("Hooked into Vault")
-        }
+        if (trunkChat != null) logger.info("Hooked into Trunk")
+        vaultChat = server.servicesManager.getRegistration(Chat::class.java)?.provider
+        if (vaultChat != null) logger.info("Hooked into Vault")
         if (!pApiEnabled && trunkChat == null && vaultChat == null) {
             logger.info("Found no plugins to hook into.")
         }
 
         /*  Initialize Metrics  */
-        logger.info("Enabling metrics...")
+        logger.info("Enabling metrics")
         val metrics = Metrics(this)
         metrics.start()
 
         /*  Commands  */
-        logger.info("Registering commands...")
+        logger.info("Registering commands")
         getCommand("chatz").executor = ChatZCommand(this)
         getCommand("format").executor = FormatCommand(this)
         getCommand("placeholders").executor = PlaceholdersCommand()
@@ -112,25 +102,84 @@ class ChatZ : JavaPlugin(), Listener {
         getCommand("chatcolor").executor = colorsCommand
 
         /*  Register Events  */
-        logger.info("Registering events...")
+        logger.info("Registering events")
         server.pluginManager.registerEvents(this, this)
 
+        logger.info("Loading channels.yml")
+        channelsFile = File(dataFolder, "channels.yml")
+        if (!channelsFile!!.exists()) {
+            logger.info("No channels.yml found! Copying default")
+            try {
+                saveResource("channels.yml", false)
+            } catch (ex : Exception) {
+                logger.warning("Failed to copy default channels.yml:")
+                ex.printStackTrace()
+                logger.warning("Shutting down.")
+                server.pluginManager.disablePlugin(this)
+                return
+            }
+        }
+        channels = YamlConfiguration.loadConfiguration(channelsFile)
+        if (channels != null) {
+            logger.info("Loaded channels.yml successfully.")
+        } else {
+            logger.warning("Failed to load channels.yml. Shutting down.")
+            server.pluginManager.disablePlugin(this)
+            return
+        }
+
+        logger.info("Loading data")
+        try {
+            if (File(dataFolder, "data.json").exists()) {
+                val parser = JsonParser()
+                val dataFile = File(dataFolder, "data.json")
+                val d = parser.parse(FileReader(dataFile))
+                d?.asJsonArray?.forEach {
+                    val o = it.asJsonObject
+                    val data = PlayerData.fromJson(o)
+                    playerData[data.uniqueId] = data
+                }
+            }
+        } catch (ex : Exception) {
+            ex.printStackTrace()
+            logger.warning("Failed to load data! Shutting down.")
+            server.pluginManager.disablePlugin(this)
+            return
+        }
+
         /*  Load Config  */
-        logger.info("Loading configuration options...")
+        logger.info("Loading configuration options")
         if (config.isSet("filter.words")) {
             for (key in config.getConfigurationSection("filter.words").getKeys(false)) {
-                val list = config.getStringList("filter.words." + key) ?: ArrayList<String>()
+                val list = config.getStringList("filter.categories." + key) ?: ArrayList<String>()
                 FilterCommand.BANNED.put(key, list)
                 FormatCommand.MESSAGES.add("filter-" + key)
             }
         }
+        //FilterCommand.BANNED.put("urls", ArrayList<String>())
+        //FormatCommand.MESSAGES.add("filter-urls")
 
         logger.info("Loaded!")
     }
 
     override fun onDisable() {
-        saveConfig()
+        saveData()
         channels!!.save(channelsFile)
+        FilterCommand.BANNED.forEach { t, u ->
+            if (t != "urls") config["filter.categories." + t] = u
+        }
+        saveConfig()
+    }
+
+    fun saveData() {
+        val array = JsonArray()
+        playerData.forEach {
+            array.add(it.value.toJson())
+        }
+        val writer = JsonWriter(FileWriter(File(dataFolder, "data.json")))
+        val gson = GsonBuilder().create()
+        gson.toJson(array, writer)
+        writer.close()
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -145,15 +194,36 @@ class ChatZ : JavaPlugin(), Listener {
 
         var flagged = false
         var filterFlagged = "general"
+        val phrasesFlagged = ArrayList<String>()
         var highlighted = message
         FilterCommand.BANNED.forEach { t, u ->
-            u.forEach {
-                if (message.contains(" $it ")) {
-                    flagged = true
-                    highlighted = highlighted.replace(it, Messages.DARK_GRAY + it + Messages.GRAY)
+            if (t == "urls") {
+                val m = event.message
+                (5..m.length).forEach { i ->
+                    (0..(m.length - i))
+                            .map { m.subSequence(it, it + i).toString() }
+                            .forEach {
+                                Bukkit.broadcastMessage("Testing > $it")
+                                if (DOMAIN_PATTERN.matcher(it).find() || InetAddressValidator.getInstance().isValid(it.replace(",", "."))) {
+                                    Bukkit.broadcastMessage("Found > $it")
+                                    flagged = true
+                                    filterFlagged = t
+                                    phrasesFlagged.add(it)
+                                } else {
+                                    Bukkit.broadcastMessage("Not FOund > $it")
+                                }
+                            }
+                }
+            } else {
+                u.forEach {
+                    if (message.contains(" $it ")) {
+                        flagged = true
+                        highlighted = highlighted.replace(it, Messages.DARK_GRAY + it + Messages.GRAY)
+                        phrasesFlagged.add(it)
+                    }
                 }
             }
-            if (flagged) {
+            if (flagged && filterFlagged == "") {
                 filterFlagged = t
                 return@forEach
             }
@@ -162,6 +232,8 @@ class ChatZ : JavaPlugin(), Listener {
         if (flagged) {
             var msg = config.getString("messages.filter-$filterFlagged") ?: config.getString("messages.filter-general", "Profanity was detected in your message!")
             msg = msg.replace("{message}", highlighted.replaceFirst(" ", ""))
+            val join = StringUtils.join(phrasesFlagged, ", ")
+            msg = msg.replace("{phrase}", join).replace("{words}", join).replace("{phrase}", join).replace("{word}", join)
             Messages.failure(event.player, Messages.colorize(msg))
             event.isCancelled = true
             return
@@ -176,37 +248,51 @@ class ChatZ : JavaPlugin(), Listener {
         }
 
         /* ----- Channel Stuff ----- */
+        val data = playerData[event.player.uniqueId]
 
-        val channel = playerChannels[event.player.uniqueId]
+        val channel = data?.channel
 
-        /*  Channel Delay  */
-        val delay = channels!!.getDouble("channels.$channel.DELAY", -1.0)
+        if (channel == null) {
+            Messages.failure(event.player, "You aren't in a channel!\nType {0} to join one.", "/channel <name>")
+            event.isCancelled = true
+            return
+        } else {
+            /*  Channel Delay  */
+            val delay = channels!!.getDouble("channels.$channel.DELAY", -1.0)
 
-        if (delay >= 0.0) {
-            if (!playerDelays.contains(event.player.uniqueId)) {
-                playerDelays[event.player.uniqueId] = System.currentTimeMillis()
-            } else {
-                val last = playerDelays[event.player.uniqueId]
-                val timeUntil = last!! + (delay * 1000.0)
-                if (System.currentTimeMillis() < timeUntil) {
-                    Messages.failure(event.player, "You can speak again in {0} in {1} second${if (timeUntil == 0.0) "s" else ""}!", channel.toString(), dateFormat.format(timeUntil / 1000.0))
+            if (delay >= 0.0) {
+                if (!data.lastChat.containsKey(channel)) {
+                    data.lastChat[channel] = System.currentTimeMillis()
                 } else {
-                    playerDelays[event.player.uniqueId] = System.currentTimeMillis()
+                    val last = data.lastChat[channel]
+                    val timeUntil = (last!! + (delay * 1000.0)) - System.currentTimeMillis()
+                    if (timeUntil > 0.0) {
+                        Messages.failure(event.player, "You can speak again in {0} in {1} second${if (timeUntil == 1.0) "" else "s"}!", channel, dateFormat.format(timeUntil / 1000.0))
+                        event.isCancelled = true
+                        return
+                    } else {
+                        data.lastChat[channel] = System.currentTimeMillis()
+                    }
                 }
             }
-        }
 
-        /*  Channel Range and Global Values  */
-        val recipients = getPlayersInMessage(event.player, channel!!)
-        if (recipients.isNotEmpty()) {
-            event.recipients.clear()
-            event.recipients.addAll(recipients)
+            /*  Channel Range and Global Values  */
+            val recipients = getPlayersInMessage(event.player, channel!!)
+            if (recipients.isNotEmpty()) {
+                event.recipients.clear()
+                event.recipients.addAll(recipients)
+            }
         }
-
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     fun onJoin(event: PlayerJoinEvent) {
+        if (!playerData.containsKey(event.player.uniqueId))
+            playerData[event.player.uniqueId] = PlayerData(event.player.uniqueId)
+        val data = PlayerData(event.player.uniqueId)
+        if (data.channel == null && channels!!.isSet("default")) {
+            data.channel = channels!!.getString("default")
+        }
         if (config.isSet("messages.join")) {
             var format = Messages.colorize(config.getString("messages.join"))
             format = format(format, event.player)
@@ -344,29 +430,42 @@ class ChatZ : JavaPlugin(), Listener {
         format = format.replace("{$playerTag:group:prefixes}", StringUtils.join(groupPrefixes, ' '))
         format = format.replace("$playerTag:group:suffixes}", StringUtils.join(groupSuffixes, ' '))
 
+        /* ----- Player Data Stuff ----- */
+
+        val data = playerData[player.uniqueId]
+
         /* ----- Channel Stuff -----  */
-        val channel = playerChannels.get(player.uniqueId)
+        val channel = data!!.channel ?: ""
+
+        format = format.replace("{channel}", channel)
+        format = format.replace("{channel:name}", channel)
+        format = format.replace("{$playerTag:channel}", channel)
 
         /*  Channel Prefix  */
-        val channelPrefix = Messages.colorize(channels!!.getString("channels.$channel.PREFIX"));
-        format = format.replace("{channel:prefix}", channelPrefix);
+        val channelPrefix= Messages.colorize(channels!!.getString("channels.$channel.PREFIX")) ?: ""
+        format = format.replace("{channel:prefix}", channelPrefix)
         format = format.replace("{$playerTag:channel:prefix}", channelPrefix)
 
-        val channelNameColor = Messages.getColor(channels!!.getString("channels.$channel.NAME_COLOR"))
-        if (channelNameColor != null) {
-            format = format.replace("{channel:namecolor}", channelNameColor.toString())
-            format = format.replace("{channel:name_color}", channelNameColor.toString())
-            format = format.replace("{$playerTag:channel:namecolor}", channelNameColor.toString())
-            format = format.replace("{$playerTag:channel:name_color}", channelNameColor.toString())
+        /*  Channel Name Color  */
+        val channelNameColor = Messages.getColor(channels!!.getString("channels.$channel.NAME_COLOR"))?.toString() ?: ""
+        format = format.replace("{channel:namecolor}", channelNameColor)
+        format = format.replace("{channel:name_color}", channelNameColor)
+        format = format.replace("{$playerTag:channel:namecolor}", channelNameColor)
+        format = format.replace("{$playerTag:channel:name_color}", channelNameColor)
+
+        /* ----- Player Settings ----- */
+
+        /*  Player Name Color  */
+        val playerNameColor = data.nameColor
+        if (playerNameColor != null) {
+            format = format.replace("{$playerTag:namecolor}", playerNameColor.toString())
+            format = format.replace("{$playerTag:name_color}", playerNameColor.toString())
         }
 
-        val channelChatColor = Messages.getColor(channels!!.getString("channels.$channel.CHAT_COLOR"))
-        if (channelChatColor != null) {
-            format = format.replace("{channel:chatcolor}", channelChatColor.toString())
-            format = format.replace("{channel:chat_color}", channelChatColor.toString())
-            format = format.replace("{$playerTag:channel:chatcolor}", channelChatColor.toString())
-            format = format.replace("{$playerTag:channel:chat_color}", channelChatColor.toString())
-        }
+        if (playerNameColor != null) format = format.replace("{player:namecolor}", playerNameColor.toString())
+
+        val nameColor = playerNameColor ?: channelNameColor
+        format = format.replace("{namecolor}", nameColor.toString())
 
         return format
     }
@@ -449,29 +548,58 @@ class ChatZ : JavaPlugin(), Listener {
         format = format.replace("{group:prefixes}", StringUtils.join(groupPrefixes, ' '))
         format = format.replace("group:suffixes}", StringUtils.join(groupSuffixes, ' '))
 
+        /* ----- Player Data Stuff ----- */
+
+        val data = playerData[player.uniqueId]
+
         /* ----- Channel Stuff -----  */
-        val channel = playerChannels.get(player.uniqueId)
+        val channel = data!!.channel ?: ""
+
+        format = format.replace("{channel}", channel)
+        format = format.replace("{channel:name}", channel)
+        format = format.replace("{$playerTag:channel}", channel)
 
         /*  Channel Prefix  */
-        val channelPrefix = Messages.colorize(channels!!.getString("channels.$channel.PREFIX"));
-        format = format.replace("{channel:prefix}", channelPrefix);
+        val channelPrefix= Messages.colorize(channels!!.getString("channels.$channel.PREFIX", ""))
+        format = format.replace("{channel:prefix}", channelPrefix)
         format = format.replace("{$playerTag:channel:prefix}", channelPrefix)
 
-        val channelNameColor = Messages.getColor(channels!!.getString("channels.$channel.NAME_COLOR"))
-        if (channelNameColor != null) {
-            format = format.replace("{channel:namecolor}", channelNameColor.toString())
-            format = format.replace("{channel:name_color}", channelNameColor.toString())
-            format = format.replace("{$playerTag:channel:namecolor}", channelNameColor.toString())
-            format = format.replace("{$playerTag:channel:name_color}", channelNameColor.toString())
+        /*  Channel Name Color  */
+        val channelNameColor = Messages.getColor(channels!!.getString("channels.$channel.NAME_COLOR", ""))?.toString() ?: ""
+        format = format.replace("{channel:namecolor}", channelNameColor)
+        format = format.replace("{channel:name_color}", channelNameColor)
+        format = format.replace("{$playerTag:channel:namecolor}", channelNameColor)
+        format = format.replace("{$playerTag:channel:name_color}", channelNameColor)
+
+        /*  Channel Chat Color  */
+        val channelChatColor = Messages.getColor(channels!!.getString("channels.$channel.CHAT_COLOR", ""))?.toString() ?: ""
+        format = format.replace("{channel:chatcolor}", channelChatColor)
+        format = format.replace("{channel:chat_color}", channelChatColor)
+        format = format.replace("{$playerTag:channel:chatcolor}", channelChatColor)
+        format = format.replace("{$playerTag:channel:chat_color}", channelChatColor)
+
+        /* ----- Player Settings ----- */
+
+        /*  Player Name Color  */
+        val playerNameColor = data.nameColor
+        if (playerNameColor != null) {
+            format = format.replace("{$playerTag:namecolor}", playerNameColor.toString())
+            format = format.replace("{$playerTag:name_color}", playerNameColor.toString())
         }
 
-        val channelChatColor = Messages.getColor(channels!!.getString("channels.$channel.CHAT_COLOR"))
-        if (channelChatColor != null) {
-            format = format.replace("{channel:chatcolor}", channelChatColor.toString())
-            format = format.replace("{channel:chat_color}", channelChatColor.toString())
-            format = format.replace("{$playerTag:channel:chatcolor}", channelChatColor.toString())
-            format = format.replace("{$playerTag:channel:chat_color}", channelChatColor.toString())
-        }
+        /*  Player Chat Color  */
+        val playerChatColor = data.chatColor
+        if (playerChatColor != null) format = format.replace("{$playerTag:chatcolor}", playerChatColor.toString())
+
+        /*  Final Name Color  */
+        val nameColor = playerNameColor ?: channelNameColor
+        format = format.replace("{namecolor}", nameColor.toString())
+        format = format.replace("{name_color}", nameColor.toString())
+
+        /*  Final Chat Color  */
+        val chatColor = playerChatColor ?: channelChatColor
+        format = format.replace("{chatcolor}", chatColor.toString())
+        format = format.replace("{chat_color}", chatColor.toString())
 
         return format
     }
@@ -482,7 +610,7 @@ class ChatZ : JavaPlugin(), Listener {
             if (it.uniqueId == sender.uniqueId) true
             val range = channels!!.getDouble("channels.$channel.RANGE", -1.0)
             if (range >= 0.0 && sender.location.distance(it.location) > range) false
-            val itChannel = playerChannels[it.uniqueId]
+            val itChannel = playerData[it.uniqueId]!!.channel
             channel == itChannel || channels!!.getBoolean("channels.$channel.GLOBAL")
         }).collect(Collectors.toSet())
     }

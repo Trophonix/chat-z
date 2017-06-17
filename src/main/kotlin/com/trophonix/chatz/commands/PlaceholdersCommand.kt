@@ -18,7 +18,7 @@ class PlaceholdersCommand : CommandExecutor {
         if (args.isNotEmpty()) {
             val message = args[0].toLowerCase()
             if (FormatCommand.MESSAGES.contains(message)) {
-                sender.sendMessage(arrayOf(Messages.SEPARATOR,
+                sender.sendMessage(arrayOf(Messages.DIV,
                         Messages.GREEN + "[" + ChatZ.PREFIX + "] " + Messages.cap(message) + " Message Placeholders:"))
                 when(message) {
                     "chat" -> sender.sendMessage("{message} " + Messages.GRAY + "The message")
@@ -31,13 +31,13 @@ class PlaceholdersCommand : CommandExecutor {
                         } else sender.sendMessage(Messages.GRAY + "There are no specific placeholders for " + message + " messages")
                     }
                 }
-                sender.sendMessage(Messages.SEPARATOR)
+                sender.sendMessage(Messages.DIV)
                 return true
             }
         }
 
         val cmd = "/$label"
-        sender.sendMessage(arrayOf(Messages.SEPARATOR,
+        sender.sendMessage(arrayOf(Messages.DIV,
                 Messages.GREEN + "[" + ChatZ.PREFIX + "] General Placeholders:",
                 "{player} " + Messages.GRAY + "The relevant player's name",
                 "{channel:prefix} " + Messages.GRAY + "The prefix of the player's chat channel",
@@ -51,8 +51,19 @@ class PlaceholdersCommand : CommandExecutor {
                 Messages.GREEN + "Type " + Messages.DARK_GREEN + "$cmd <event>" + Messages.GREEN + " to view specific placeholders."))
         if (sender is Player) {
             val messages = ArrayList<BaseComponent>()
+            var lineSize = 0
             FormatCommand.MESSAGES.forEach {
-                val i = it + if (FormatCommand.MESSAGES.indexOf(it) < (FormatCommand.MESSAGES.size - 1)) Messages.GREEN + ", " else ""
+                val i = it + if (FormatCommand.MESSAGES.indexOf(it) < (FormatCommand.MESSAGES.size - 1)) {
+                    lineSize += it.length + 2
+                    Messages.GREEN + ", "
+                } else {
+                    lineSize += it.length
+                    ""
+                }
+                if (lineSize > (52 - it.length - 2)) {
+                    lineSize = 0
+                    messages.add(TextComponent("\n"))
+                }
                 messages.add(TextComponent(*ComponentBuilder(i).color(ChatColor.DARK_GREEN)
                         .event(ClickEvent(ClickEvent.Action.RUN_COMMAND, "$cmd $it"))
                         .event(HoverEvent(HoverEvent.Action.SHOW_TEXT, ComponentBuilder("View ${Messages.cap(it)} Message Placeholders").color(ChatColor.GREEN).create()))
@@ -63,7 +74,7 @@ class PlaceholdersCommand : CommandExecutor {
                     *messages.toTypedArray()
             ))
         }
-        sender.sendMessage(Messages.SEPARATOR)
+        sender.sendMessage(Messages.DIV)
         return true
     }
 

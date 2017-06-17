@@ -26,7 +26,7 @@ class ChatZCommand(val plugin: ChatZ) : CommandExecutor {
             }
         }
         val cmd = "/$label "
-        sender.sendMessage(arrayOf(Messages.SEPARATOR, Messages.GREEN + "[" + ChatZ.PREFIX + " by Trophonix]"))
+        sender.sendMessage(arrayOf(Messages.DIV, Messages.GREEN + "[" + ChatZ.PREFIX + " by Trophonix]"))
         plugin.description.commands.forEach { c, d ->
             if (c != command.name) {
                 if (sender !is Player)
@@ -38,7 +38,7 @@ class ChatZCommand(val plugin: ChatZ) : CommandExecutor {
                             .create()))
             }
         }
-        sender.sendMessage(Messages.SEPARATOR)
+        sender.sendMessage(Messages.DIV)
         return true
     }
 

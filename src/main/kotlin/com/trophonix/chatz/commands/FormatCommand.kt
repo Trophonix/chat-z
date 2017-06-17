@@ -26,9 +26,9 @@ class FormatCommand(val plugin : ChatZ) : CommandExecutor {
             if (MESSAGES.contains(message)) {
                 if (args.size == 1) {
                     val format = plugin.config.getString("messages." + message)
-                    sender.sendMessage(arrayOf(Messages.SEPARATOR,
+                    sender.sendMessage(arrayOf(Messages.DIV,
                             Messages.GREEN + "[" + ChatZ.PREFIX + "] Current " + Messages.cap(message) + " Message Format:",
-                            format ?: Messages.RED + "Not Yet Set!", ""
+                            format ?: Messages.DARK_RED + "Not Set!", ""
                     ))
                     if (sender !is Player ) {
                         sender.sendMessage(Messages.GREEN + "Type " + Messages.DARK_GREEN + "/placeholders" + Messages.GREEN + " to view the available placeholders.")
@@ -42,25 +42,30 @@ class FormatCommand(val plugin : ChatZ) : CommandExecutor {
                                 TextComponent(*slashPlaceholders),
                                 TextComponent(Messages.GREEN + " to view the available placeholders.")
                         ))
-                        val clickHere : Array<BaseComponent> = ComponentBuilder("Click Here").color(ChatColor.DARK_GREEN)
+                        val clickHere = ComponentBuilder("Click Here").color(ChatColor.DARK_GREEN)
                                 .event(ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "$cmd$message ${format?:""}"))
                                 .event(HoverEvent(HoverEvent.Action.SHOW_TEXT, ComponentBuilder("Edit Current Format").color(ChatColor.GREEN).create()))
                                 .create()
                         sender.spigot().sendMessage(TextComponent(TextComponent(*clickHere), TextComponent(Messages.GREEN + " to edit the current format.")))
                     }
-                    sender.sendMessage(Messages.SEPARATOR)
+                    sender.sendMessage(Messages.DIV)
                 } else {
                     var newFormat = StringUtils.join(args.copyOfRange(1, args.size), ' ')
-                    if ((newFormat.startsWith("\"") && newFormat.endsWith("\"")) || (newFormat.startsWith("'") && newFormat.endsWith("'"))) {
-                        newFormat = newFormat.substring(1..newFormat.length - 1);
+                    if (newFormat == "\"\"" || newFormat.equals("null", true) || newFormat.equals("clear", true)) {
+                        plugin.config.set("messages.$message", null)
+                        Messages.success(sender, Messages.cap(message) + " Message Format cleared!")
+                        return true
                     }
-                    plugin.config.set("messages." + message, newFormat)
-                    Messages.success(sender, Messages.SEPARATOR + "\\n[" + ChatZ.PREFIX + "] " + Messages.cap(message) + " Message Format set to:\\n{0}\\n" + Messages.SEPARATOR, newFormat)
+                    if ((newFormat.startsWith("\"") && newFormat.endsWith("\"")) || (newFormat.startsWith("'") && newFormat.endsWith("'"))) {
+                        newFormat = newFormat.substring(1..newFormat.length - 2);
+                    }
+                    plugin.config.set("messages.$message", newFormat)
+                    Messages.success(sender, Messages.DIV + "\n[" + ChatZ.PREFIX + "] " + Messages.cap(message) + " Message Format set to:\n{0}\n" + Messages.DIV, newFormat)
                 }
                 return true
             }
         }
-        sender.sendMessage(Messages.SEPARATOR)
+        sender.sendMessage(Messages.DIV)
         sender.sendMessage(Messages.GREEN + "[" + ChatZ.PREFIX + "] Change Message Formats:")
         if (sender !is Player)
             MESSAGES.forEach { sender.sendMessage(cmd + it) }
@@ -86,7 +91,7 @@ class FormatCommand(val plugin : ChatZ) : CommandExecutor {
                     TextComponent(Messages.GREEN + " to view the available placeholders.")
             ))
         }
-        sender.sendMessage(Messages.SEPARATOR)
+        sender.sendMessage(Messages.DIV)
         return true
     }
 

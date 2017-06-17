@@ -17,18 +17,22 @@ class ChannelsCommand(val plugin : ChatZ) : CommandExecutor {
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
         val cmd = "/$label"
-        if (command.name == "channel" && args.isNotEmpty()) {
-            if (sender !is Player) {
-                sender.sendMessage(Messages.RED + "This command is for players only.")
+        if (command.name == "channel") {
+            if (args.isNotEmpty()) {
+                if (sender !is Player) {
+                    sender.sendMessage(Messages.RED + "This command is for players only.")
+                    return true
+                }
+                val channel = args[0].toLowerCase()
+                if (!plugin.channels!!.contains("channels.$channel")) {
+                    Messages.failure(sender, "A channel called {0} does not exist.", channel)
+                    return true
+                }
+                plugin.playerData[sender.uniqueId]?.channel = channel
+                Messages.success(sender, "Successfully joined {0}", channel)
                 return true
             }
-            val channel = args[0].toLowerCase()
-            if (!plugin.channels!!.contains("channels.$channel")) {
-                Messages.failure(sender, "A channel called {0} does not exist.", channel)
-                return true
-            }
-            plugin.playerChannels[sender.uniqueId] = channel
-            Messages.success(sender, "Successfully joined {0}", channel)
+            sender.sendMessage(Messages.GREEN + "Usage: " + Messages.DARK_GREEN + "$cmd <name>")
             return true
         } else if (command.name == "channels") {
             if (args.size == 1) {
@@ -36,9 +40,9 @@ class ChannelsCommand(val plugin : ChatZ) : CommandExecutor {
                 if (!plugin.channels!!.contains("channels.$channel")) {
                     if (channel == "default") {
                         sender.sendMessage(arrayOf(
-                                Messages.SEPARATOR,
+                                Messages.DIV,
                                 Messages.GREEN + "[" + ChatZ.PREFIX + "] The default channel is:",
-                                Messages.GRAY + plugin.channels!!.getString("default", Messages.RED + "Not Yet Set!"),
+                                Messages.GRAY + plugin.channels!!.getString("default", Messages.DARK_RED + "Not Set!"),
                                 ""
                         ))
                         if (sender !is Player) {
@@ -54,18 +58,40 @@ class ChannelsCommand(val plugin : ChatZ) : CommandExecutor {
                                     *ComponentBuilder(" to change it.").color(ChatColor.GREEN).create()
                             ))
                         }
+                        sender.sendMessage(Messages.DIV)
+                        return true
+                    } else if (channel == "list") {
+                        sender.sendMessage(arrayOf(Messages.DIV,
+                                Messages.GREEN + "[" + ChatZ.PREFIX + "] Channels:"))
+                        if (sender !is Player) {
+                            plugin.channels!!.getConfigurationSection("channels").getKeys(false).forEach {
+                                sender.sendMessage(" - " + Messages.GRAY + it)
+                            }
+                        } else {
+                            plugin.channels!!.getConfigurationSection("channels").getKeys(false).forEach {
+                                sender.spigot().sendMessage(TextComponent(
+                                        *ComponentBuilder(" - " + Messages.GRAY + it)
+                                                .event(ClickEvent(ClickEvent.Action.RUN_COMMAND, "$cmd $it"))
+                                                .event(HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                                                        ComponentBuilder("View info about $it").color(ChatColor.GREEN).create()))
+                                                .create()
+                                ))
+                            }
+                        }
+                        sender.sendMessage(Messages.DIV)
+                        return true
                     }
                     Messages.failure(sender, "A channel called {0} does not exist.", channel)
                     return true
                 }
                 sender.sendMessage(arrayOf(
-                        Messages.SEPARATOR,
+                        Messages.DIV,
                         Messages.GREEN + "[" + ChatZ.PREFIX + "] Channel Info ($channel):"
                 ))
                 ChannelItem.values().forEach {
-                    sender.sendMessage("${it.displayName}: " + Messages.GRAY + plugin.channels!!.get("channels.$channel.${it.name}", Messages.RED + "Not Set")?.toString())
+                    sender.sendMessage("${it.displayName}: " + Messages.GRAY + plugin.channels!!.get("channels.$channel.${it.name}", Messages.DARK_RED + "Not Set")?.toString())
                 }
-                sender.sendMessage(Messages.SEPARATOR)
+                sender.sendMessage(Messages.DIV)
                 return true
             } else if (args.size >= 2) {
                 when (args[0].toLowerCase()) {
@@ -92,7 +118,7 @@ class ChannelsCommand(val plugin : ChatZ) : CommandExecutor {
                         return true
                     }
                     "default" -> {
-                        val channel = args[0].toLowerCase()
+                        val channel = args[1].toLowerCase()
                         if (!plugin.channels!!.contains("channels.$channel")) {
                             Messages.failure(sender, "A channel called {0} does not exist.", channel)
                             return true
@@ -107,20 +133,25 @@ class ChannelsCommand(val plugin : ChatZ) : CommandExecutor {
                         if (item != null) {
                             if (args.size >= 3) {
                                 var value = StringUtils.join(args.copyOfRange(2, args.size), ' ')
+                                if (value == "\"\"" || value.equals("null", true) || value.equals("clear", true)) {
+                                    plugin.channels!!.set("channels.$channel.${item.name}", null)
+                                    Messages.success(sender, "${item.displayName} of $channel cleared!")
+                                    return true
+                                }
                                 if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
-                                    value = value.substring(1..value.length - 1);
+                                    value = value.substring(1..value.length - 2);
                                 }
                                 try {
                                     plugin.channels!!.set("channels.$channel.${item.name}", item.parse(value))
                                     Messages.success(sender, "${item.displayName} of $channel set to {0}", value)
                                 } catch (ex : Exception) {
-                                    Messages.failure(sender, ex.message, value)
+                                    Messages.failure(sender, ex.message!!, value)
                                 }
                             } else {
                                 sender.sendMessage(arrayOf(
-                                        Messages.SEPARATOR,
+                                        Messages.DIV,
                                         Messages.GREEN + "[" + ChatZ.PREFIX + "] ${item.displayName} of $channel:",
-                                        plugin.channels!!.get("channels.$channel.${item.name}", Messages.RED + "Not Yet Set!").toString(),
+                                        plugin.channels!!.get("channels.$channel.${item.name}", Messages.DARK_RED + "Not Set!").toString(),
                                         ""
                                 ))
                                 if (sender !is Player) {
@@ -137,7 +168,7 @@ class ChannelsCommand(val plugin : ChatZ) : CommandExecutor {
                                         *ComponentBuilder(" to edit this value!").color(ChatColor.GREEN).create()
                                     ))
                                 }
-                                sender.sendMessage(Messages.SEPARATOR)
+                                sender.sendMessage(Messages.DIV)
                             }
                             return true
                         }
@@ -145,24 +176,25 @@ class ChannelsCommand(val plugin : ChatZ) : CommandExecutor {
                 }
             }
             sender.sendMessage(arrayOf(
-                    Messages.SEPARATOR,
+                    Messages.DIV,
                     Messages.GREEN + "[" + ChatZ.PREFIX + "] " + "Channels:",
                     "$cmd add <name> " + Messages.GRAY + "Make a channel",
                     "$cmd del <name> " + Messages.GRAY + "Delete a channel",
                     "$cmd default <name> " + Messages.GRAY + "Set the default channel",
+                    "$cmd list",
                     "$cmd <name> " + Messages.GRAY + "View info about a channel"
             ))
             ChannelItem.values().forEach {
                 sender.sendMessage("$cmd <name> ${it.name.toLowerCase()} [value] " + Messages.GRAY + it.description)
             }
-            sender.sendMessage(Messages.SEPARATOR)
+            sender.sendMessage(Messages.DIV)
         }
         return true
     }
 
     enum class ChannelItem(val displayName : String, val description : String, val defaultValue : Any?) {
 
-        PREFIX("Prefix", "Prefix to display in messages (/format)", null) {
+        PREFIX("Prefix", "Prefix to display in messages", null) {
             override fun parse(string: String): Any {
                 return string
             }
@@ -188,7 +220,7 @@ class ChannelsCommand(val plugin : ChatZ) : CommandExecutor {
                 }
             }
         },
-        RANGE("Range", "Range in blocks that messages reach", null) {
+        RANGE("Range", "Range that messages reach", null) {
             override fun parse(string: String): Any {
                 try {
                     return string.toDouble()
@@ -197,7 +229,7 @@ class ChannelsCommand(val plugin : ChatZ) : CommandExecutor {
                 }
             }
         },
-        GLOBAL("Global", "Whether other channels see this chat", false) {
+        GLOBAL("Global", "Other channels see chat in this one", false) {
             override fun parse(string: String): Any {
                 return string.toBoolean()
             }

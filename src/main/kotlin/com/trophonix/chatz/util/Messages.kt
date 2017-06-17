@@ -31,14 +31,22 @@ class Messages {
         val UNDERLINE = ChatColor.UNDERLINE.toString()
         val STRIKE = ChatColor.STRIKETHROUGH.toString()
         val RESET = ChatColor.RESET.toString()
-        val SEPARATOR = RED + "-----------------------------------"
+        val DIV = RED + "-----------------------------------"
+
+        val COLOR_MAP = hashMapOf(
+                Pair("pink", "light_purple"),
+                Pair("lime", "green"),
+                Pair("darkyellow", "gold"),
+                Pair("lightgold", "yellow"),
+                Pair("royalblue", "blue")
+        )
 
         fun success(sender : CommandSender, m : String, vararg inserts : String) {
             var message = m
             for (i in inserts.indices) {
                 message = message.replace("{$i}", WHITE + inserts[i] + GREEN)
             }
-            message.split("\\n").forEach({
+            message.split("\n").forEach({
                 sender.sendMessage(GREEN + it)
             })
             if (sender is Player) {
@@ -55,7 +63,8 @@ class Messages {
                 sender.playSound(sender.eyeLocation, Sound.ENTITY_VILLAGER_HURT, 1f, 1f)
             }
         }
-        fun colorize(message : String) : String {
+        fun colorize(message : String?) : String {
+            if (message == null) return ""
             return ChatColor.translateAlternateColorCodes('&', message)
         }
         fun center(m : String) : String {
@@ -71,7 +80,7 @@ class Messages {
         fun cap(m : String) : String {
             val message = StringBuilder()
             for (i in m.indices) {
-                if (i == 0 || m[i - 1] == '-') {
+                if (i == 0 || m[i - 1] == '-' || m[i - 1] == '_' || m[i - 1] == ' ') {
                     message.append(m[i].toUpperCase())
                 } else {
                     message.append(m[i].toLowerCase())
@@ -79,13 +88,29 @@ class Messages {
             }
             return message.toString()
         }
-        fun getColor(col : String) : ChatColor? {
-            for (color in ChatColor.values()) {
-                if (color.name.equals(col, true) || col[col.length - 1] == color.char) {
-                    return color
-                }
+        fun getColor(c : String?) : ChatColor? {
+            if (c == null || c == "") return null
+            var col = COLOR_MAP.get(c) ?: c
+            col = col.replace("_", "").replace("-", "").replace(" ", "")
+            return ChatColor.values().firstOrNull {
+                val name = it.name.replace("_", "")
+                it.isColor && (name.equals(col, true) ||
+                        name.equals(col.toLowerCase().replace("light", ""), true) ||
+                        name.equals(col.toLowerCase().replace("dark", ""), true) ||
+                        col[col.length - 1] == it.char)
             }
-            return null
+        }
+        fun notPlayer(sender : CommandSender) {
+            sender.sendMessage(RED + "You must be a player for that!")
+        }
+        fun hasColorPermission(sender : CommandSender, col : ChatColor) : Boolean {
+            arrayListOf("color", "chat-z.color", "chatz.color", "chat.color").forEach {
+                val has = sender.hasPermission("$it.color.${col.name.toLowerCase()}")
+                        || sender.hasPermission("$it.color.${col.char}")
+                        || sender.hasPermission("$it.${col.name.toLowerCase().replace('_', '-')}")
+                if (has) return true
+            }
+            return false
         }
     }
 }
